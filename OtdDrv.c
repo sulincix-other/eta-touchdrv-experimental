@@ -22,8 +22,58 @@ static struct usb_device_id const dev_table[] = {
 };
 MODULE_DEVICE_TABLE(usb, dev_table);
 
+int i, endpoint_in = 0, endpoint_out = 0;
+
 // Input device structure for uinput
 static struct input_dev *uinput_dev;
+static struct input_mt_slot *mt_slots;
+static struct urb *read_urb;  // Declaration for read_urb
+
+// Function to handle multi-touch input events
+static void otd_mt_event(struct urb *urb)
+{
+    struct usb_device *udev = usb_get_intfdata(urb->dev->actconfig->interface[0]);
+    struct input_dev *input_dev = uinput_dev;
+    unsigned char *data = urb->transfer_buffer;
+    int i;
+
+    for (i = 0; i < urb->actual_length / 3; i++) {
+        int slot = data[i * 3] & 0x0F;
+
+        // Manually set the state of the multi-touch slot
+        input_set_abs_params(input_dev, ABS_MT_SLOT, 0, slot, 0, 0);
+
+        // Parse the received data and extract touch information
+        // This is a placeholder implementation; you should replace it with your actual data parsing logic
+        int x = data[i * 3 + 1];
+        int y = data[i * 3 + 2];
+        int touch_major = 0; // Replace with actual touch major information
+
+        // Input event for touch position
+        input_event(input_dev, EV_ABS, ABS_MT_POSITION_X, x);
+        input_event(input_dev, EV_ABS, ABS_MT_POSITION_Y, y);
+        input_event(input_dev, EV_ABS, ABS_MT_TOUCH_MAJOR, touch_major);
+
+        input_sync(input_dev);
+    }
+}
+
+// Function to submit a read urb
+static int otd_submit_read_urb(struct usb_device *udev, struct urb *urb)
+{
+    int result;
+
+    // Set up the urb for reading from the bulk-in endpoint
+    usb_fill_bulk_urb(urb, udev, usb_rcvbulkpipe(udev, endpoint_in), urb->transfer_buffer, 64, otd_mt_event, NULL);
+
+    // Submit the urb for processing
+    result = usb_submit_urb(urb, GFP_ATOMIC);
+    if (result) {
+        printk(KERN_ERR "Failed to submit read urb. Error number %d\n", result);
+    }
+
+    return result;
+}
 
 // Probe function called when a matching device is found
 static int otd_probe(struct usb_interface *intf, const struct usb_device_id *id)
@@ -33,7 +83,6 @@ static int otd_probe(struct usb_interface *intf, const struct usb_device_id *id)
     struct usb_device_descriptor desc;
     struct usb_host_interface *interface;
     struct usb_endpoint_descriptor *endpoint;
-    int i, endpoint_in = 0, endpoint_out = 0;
 
     // Read the device descriptor to get device information
     if (usb_get_descriptor(udev, USB_DT_DEVICE, 0, &desc, sizeof(desc))) {
@@ -84,8 +133,27 @@ static int otd_probe(struct usb_interface *intf, const struct usb_device_id *id)
 
     // Set a pointer to the USB device in the interface data
     usb_set_intfdata(intf, udev);
+    
+    // Initialize the read urb
+    read_urb = usb_alloc_urb(0, GFP_KERNEL);
+    if (!read_urb) {
+        printk(KERN_ERR "Failed to allocate read urb\n");
+        kfree(mt_slots);
+        input_unregister_device(uinput_dev);
+        return -ENOMEM;
+    }
+
+    // Submit the read urb for the first time
+    if (otd_submit_read_urb(udev, read_urb)) {
+        usb_free_urb(read_urb);
+        kfree(mt_slots);
+        input_unregister_device(uinput_dev);
+        return -EIO;
+    }
+    
     return 0;
 }
+
 
 // Disconnect function called when the device is removed
 static void otd_disconnect(struct usb_interface *intf)
