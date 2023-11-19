@@ -22,5 +22,5 @@ all:
 new rebuild:	clean all
 
 clean:
-	rm -f *.o *.mod.o *.mod *.ko *.mod.c *.cmd *.*~ *~ Module.* modules.* \.*
+	rm -vf *.o *.mod.o *.mod *.ko *.mod.c *.cmd *.*~ *~ Module.* modules.* \.*
 endif

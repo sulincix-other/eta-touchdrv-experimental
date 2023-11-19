@@ -2,6 +2,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/usb.h>
+#include <linux/input.h>
 #include <linux/uinput.h>
 
 MODULE_DESCRIPTION("USB driver for Optical touch screen");
@@ -60,6 +61,9 @@ static int otd_probe(struct usb_interface *intf, const struct usb_device_id *id)
     __set_bit(ABS_MT_POSITION_Y, uinput_dev->absbit);
     __set_bit(ABS_MT_TOUCH_MAJOR, uinput_dev->absbit);
 
+    // Set multi-touch parameters
+    uinput_dev->absinfo[ABS_MT_SLOT].maximum = 1;
+    uinput_dev->absinfo[ABS_MT_SLOT].resolution = 0;
     input_set_abs_params(uinput_dev, ABS_MT_POSITION_X, 0, 32767, 0, 0);
     input_set_abs_params(uinput_dev, ABS_MT_POSITION_Y, 0, 32767, 0, 0);
     input_set_abs_params(uinput_dev, ABS_MT_TOUCH_MAJOR, 0, 32767, 0, 0);
